@@ -68,7 +68,7 @@ import gnu.trove.map.hash.TObjectIntHashMap;
  * specific functionality to sensors and streams.
  * </p><p>
  * The {@code HTMSensor} decorates the sensor with the expected
- * meta data containing field name and field type information 
+ * meta data containing field name and field type information
  * together with the information needed in order to auto-create
  * {@link Encoder}s necessary to output a bit vector specifically
  * tailored for HTM (Hierarchical Temporal Memory) input.
@@ -81,7 +81,7 @@ import gnu.trove.map.hash.TObjectIntHashMap;
  * a single stream can supply multiple fanouts.
  * </p><p>
  * <b>Warning:</b> if {@link #getOutputStream()} is called multiple times,
- * all calls must precede any operations on any of the supplied streams. 
+ * all calls must precede any operations on any of the supplied streams.
  * </p><p>
  * @author David Ray
  *
@@ -89,7 +89,7 @@ import gnu.trove.map.hash.TObjectIntHashMap;
  */
 public class HTMSensor<T> implements Sensor<T>, Serializable {
     private static final long serialVersionUID = 1L;
-    
+
     private boolean encodersInitted;
     private Sensor<T> delegate;
     private SensorParams sensorParams;
@@ -99,45 +99,47 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
     private transient Stream<int[]> outputStream;
     private transient List<int[]> output;
     private transient InputMap inputMap;
-    
+
     private TIntObjectMap<Encoder<?>> indexToEncoderMap;
     private TObjectIntHashMap<String> indexFieldMap = new TObjectIntHashMap<String>();
-    
-    
+
+
     private transient Iterator<int[]> mainIterator;
     private List<LinkedList<int[]>> fanOuts = new ArrayList<>();
-    
-    /** Protects {@ #mainIterator} formation and the next() call */
+
+    /**
+     * Protects {@ #mainIterator} formation and the next() call
+     */
     private Lock criticalAccessLock = new ReentrantLock();
-    
-    
-    
+
+
     /**
      * Decorator pattern to construct a new HTMSensor wrapping the specified {@link Sensor}.
-     * 
+     *
      * @param sensor
      */
     public HTMSensor(Sensor<T> sensor) {
         this.delegate = sensor;
         this.sensorParams = sensor.getSensorParams();
         header = new Header(sensor.getInputStream().getMeta());
-        if(header == null || header.size() < 3) {
+        if (header == null || header.size() < 3) {
             throw new IllegalStateException("Header must always be present; and have 3 lines.");
         }
         createEncoder();
     }
-    
+
     /**
-     * DO NOT CALL THIS METHOD! 
+     * DO NOT CALL THIS METHOD!
      * Used internally by deserialization routines.
-     * 
-     * Sets the {@link Parameters} reconstituted from deserialization 
-     * @param localParameters   the Parameters to use.
+     * <p>
+     * Sets the {@link Parameters} reconstituted from deserialization
+     *
+     * @param localParameters the Parameters to use.
      */
     public void setLocalParameters(Parameters localParameters) {
         this.localParameters = localParameters;
     }
-    
+
     /**
      * {@inheritDoc}
      */
@@ -148,7 +150,7 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
         makeIndexEncoderMap();
         return this;
     }
-    
+
     /**
      * Called internally during construction to build the encoders
      * needed to process the configured field types.
@@ -156,17 +158,17 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
     @SuppressWarnings("unchecked")
     private void createEncoder() {
         encoder = MultiEncoder.builder().name("MultiEncoder").build();
-        
+
         Map<String, Map<String, Object>> encoderSettings;
-        if(localParameters != null && 
-            (encoderSettings = (Map<String, Map<String, Object>>)localParameters.get(KEY.FIELD_ENCODING_MAP)) != null &&
+        if (localParameters != null &&
+                (encoderSettings = (Map<String, Map<String, Object>>) localParameters.get(KEY.FIELD_ENCODING_MAP)) != null &&
                 !encoderSettings.isEmpty()) {
-            
+
             initEncoders(encoderSettings);
             makeIndexEncoderMap();
         }
     }
-    
+
     /**
      * Sets up a mapping which describes the order of occurrence of comma
      * separated fields - mapping their ordinal position to the {@link Encoder}
@@ -176,7 +178,7 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
      */
     private void makeIndexEncoderMap() {
         indexToEncoderMap = new TIntObjectHashMap<Encoder<?>>();
-        
+
         for (int i = 0, size = header.getFieldNames().size(); i < size; i++) {
             switch (header.getFieldTypes().get(i)) {
                 case DATETIME:
@@ -228,23 +230,24 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
                     break;
             }
         }
-        
-    }
-    
-    /**
-     * Returns the class of the underling {@link Sensor}
-     * @return  the underlying delegate's class
-     */
-    @SuppressWarnings("unchecked")
-    public Class<? extends Sensor<?>> getSensorClass() {
-        return (Class<? extends Sensor<?>>)delegate.getClass();
+
     }
 
     /**
-     * Returns an instance of {@link SensorParams} used 
+     * Returns the class of the underling {@link Sensor}
+     *
+     * @return the underlying delegate's class
+     */
+    @SuppressWarnings("unchecked")
+    public Class<? extends Sensor<?>> getSensorClass() {
+        return (Class<? extends Sensor<?>>) delegate.getClass();
+    }
+
+    /**
+     * Returns an instance of {@link SensorParams} used
      * to initialize the different types of Sensors with
      * their resource location or source object.
-     * 
+     *
      * @return a {@link SensorParams} object.
      */
     @Override
@@ -262,146 +265,225 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
      * in addition the MetaStream returned can return meta information (see
      * {@link MetaStream#getMeta()}.
      * </p>
-     * @return  a {@link MetaStream} instance.
+     *
+     * @return a {@link MetaStream} instance.
      */
     @SuppressWarnings("unchecked")
     @Override
     public <K> MetaStream<K> getInputStream() {
-        return (MetaStream<K>)delegate.getInputStream();
+        return (MetaStream<K>) delegate.getInputStream();
     }
-    
+
     /**
      * Customized Iterator which allows "forking" of a Stream
      * into multiple fanouts.
      */
-    private class Copy implements Iterator<int[]> {
+    public class Copy implements Iterator<int[]> {
         private LinkedList<int[]> list;
-        Copy(LinkedList<int[]> l) { this.list = l; }
-        public boolean hasNext() { return !list.isEmpty() || mainIterator.hasNext(); }
+
+        Copy(LinkedList<int[]> l) {
+            this.list = l;
+        }
+
+        public boolean hasNext() {
+            return !list.isEmpty() || mainIterator.hasNext();
+        }
+
         public int[] next() {
-            if(list.isEmpty()) {
+            if (list.isEmpty()) {
                 // We want to make sure only one thread calls next at a time
                 criticalAccessLock.lock();
                 int[] next = mainIterator.next();
-                for(List<int[]> l : fanOuts) { l.add(next); }
+                for (List<int[]> l : fanOuts) {
+                    l.add(next);
+                }
                 criticalAccessLock.unlock();
             }
             return list.remove(0);
         }
     }
-    
+
     /**
      * Specialized {@link Map} for the avoidance of key hashing. This
-     * optimization overrides {@link Map#get(Object)} and directly accesses the 
+     * optimization overrides {@link Map#get(Object)} and directly accesses the
      * input arrays providing input and should be extremely faster.
      */
     class InputMap extends HashMap<String, Object> {
         private static final long serialVersionUID = 1L;
-        
+
         private FieldMetaType[] fTypes;
         private String[] arr;
-        
-        @Override public Object get(Object key) {
+
+        @Override
+        public Object get(Object key) {
             int idx = indexFieldMap.get(key);
             return fTypes[idx].decodeType(arr[idx + 1], indexToEncoderMap.get(idx));
         }
-        @Override public boolean containsKey(Object key) {
+
+        @Override
+        public boolean containsKey(Object key) {
             return indexFieldMap.get(key) != -1;
         }
     }
-    
+
     /**
      * Returns the encoded output stream of the underlying {@link Stream}'s encoder.
-     * 
-     * @return      the encoded output stream.
+     *
+     * @return the encoded output stream.
      */
     public Stream<int[]> getOutputStream() {
-        if(isTerminal()) {
+        if (isTerminal()) {
             throw new IllegalStateException("Stream is already \"terminal\" (operated upon or empty)");
         }
-        
-        final MultiEncoder encoder = (MultiEncoder)getEncoder();
-        if(encoder == null) {
+
+        final MultiEncoder encoder = (MultiEncoder) getEncoder();
+        if (encoder == null) {
             throw new IllegalStateException(
-                "setLocalParameters(Parameters) must be called before calling this method.");
+                    "setLocalParameters(Parameters) must be called before calling this method.");
         }
-        
+
         // Protect outputStream formation and creation of "fan out" also make sure
         // that no other thread is trying to update the fan out lists
         Stream<int[]> retVal = null;
         try {
             criticalAccessLock.lock();
-            
+
             final String[] fieldNames = getFieldNames();
             final FieldMetaType[] fieldTypes = getFieldTypes();
-            
-            if(outputStream == null) {
-                if(indexFieldMap.isEmpty()) {
-                    for(int i = 0;i < fieldNames.length;i++) {
+
+            if (outputStream == null) {
+                if (indexFieldMap.isEmpty()) {
+                    for (int i = 0; i < fieldNames.length; i++) {
                         indexFieldMap.put(fieldNames[i], i);
                     }
                 }
-              
+
                 // NOTE: The "inputMap" here is a special local implementation
                 //       of the "Map" interface, overridden so that we can access
                 //       the keys directly (without hashing). This map is only used
                 //       for this use case so it is ok to use this optimization as
                 //       a convenience.
-                if(inputMap == null) {
+                if (inputMap == null) {
                     inputMap = new InputMap();
                     inputMap.fTypes = fieldTypes;
                 }
-                
+
                 final boolean isParallel = delegate.getInputStream().isParallel();
-                
+
                 output = new ArrayList<>();
-                
+
                 outputStream = delegate.getInputStream().map(l -> {
-                    String[] arr = (String[])l;
+                    String[] arr = (String[]) l;
                     inputMap.arr = arr;
                     return input(arr, fieldNames, fieldTypes, output, isParallel);
                 });
-                
+
                 mainIterator = outputStream.iterator();
             }
-            
+
             LinkedList<int[]> l = new LinkedList<int[]>();
             fanOuts.add(l);
             Copy copy = new Copy(l);
-            
+
             retVal = StreamSupport.stream(Spliterators.spliteratorUnknownSize(copy,
-                Spliterator.ORDERED | Spliterator.NONNULL | Spliterator.IMMUTABLE), false);
-            
-        }catch(Exception e) {
+                    Spliterator.ORDERED | Spliterator.NONNULL | Spliterator.IMMUTABLE), false);
+
+        } catch (Exception e) {
             e.printStackTrace();
-        }finally {
+        } finally {
             criticalAccessLock.unlock();
         }
-        
+
         return retVal;
     }
-    
+
+    public Copy getOutputStreamCopy() {
+        if (isTerminal()) {
+            throw new IllegalStateException("Stream is already \"terminal\" (operated upon or empty)");
+        }
+
+        final MultiEncoder encoder = (MultiEncoder) getEncoder();
+        if (encoder == null) {
+            throw new IllegalStateException(
+                    "setLocalParameters(Parameters) must be called before calling this method.");
+        }
+
+        // Protect outputStream formation and creation of "fan out" also make sure
+        // that no other thread is trying to update the fan out lists
+        Copy retVal = null;
+        try {
+            criticalAccessLock.lock();
+
+            final String[] fieldNames = getFieldNames();
+            final FieldMetaType[] fieldTypes = getFieldTypes();
+
+            if (outputStream == null) {
+                if (indexFieldMap.isEmpty()) {
+                    for (int i = 0; i < fieldNames.length; i++) {
+                        indexFieldMap.put(fieldNames[i], i);
+                    }
+                }
+
+                // NOTE: The "inputMap" here is a special local implementation
+                //       of the "Map" interface, overridden so that we can access
+                //       the keys directly (without hashing). This map is only used
+                //       for this use case so it is ok to use this optimization as
+                //       a convenience.
+                if (inputMap == null) {
+                    inputMap = new InputMap();
+                    inputMap.fTypes = fieldTypes;
+                }
+
+                final boolean isParallel = delegate.getInputStream().isParallel();
+
+                output = new ArrayList<>();
+
+                outputStream = delegate.getInputStream().map(l -> {
+                    String[] arr = (String[]) l;
+                    inputMap.arr = arr;
+                    return input(arr, fieldNames, fieldTypes, output, isParallel);
+                });
+
+                mainIterator = outputStream.iterator();
+            }
+
+            LinkedList<int[]> l = new LinkedList<int[]>();
+            fanOuts.add(l);
+            Copy copy = new Copy(l);
+
+            retVal = copy;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            criticalAccessLock.unlock();
+        }
+
+        return retVal;
+    }
+
     public boolean hasNext() {
         return mainIterator.hasNext();
     }
-    
+
     /**
      * Returns an array of field names in the order of column head occurrence.
-     * 
+     *
      * @return
      */
     private String[] getFieldNames() {
-        return (String[])header.getFieldNames().toArray(new String[header.getFieldNames().size()]);
+        return (String[]) header.getFieldNames().toArray(new String[header.getFieldNames().size()]);
     }
-    
+
     /**
      * Returns an array of {@link FieldMetaType}s in the order of field occurrence.
+     *
      * @return
      */
     private FieldMetaType[] getFieldTypes() {
         return header.getFieldTypes().toArray(new FieldMetaType[header.getFieldTypes().size()]);
     }
-    
+
     /**
      * <p>
      * Populates the specified outputStreamSource (List&lt;int[]&gt;) with an encoded
@@ -414,150 +496,151 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
      * must be a sequence number, which means you may have to insert that by hand. Typically
      * this method is called internally where the underlying sensor does the sequencing automatically.</em>
      * </p>
-     *  
-     * @param arr                       The string array of field values           
-     * @param fieldNames                The field names
-     * @param fieldTypes                The field types
-     * @param outputStreamSource        A list object to hold the encoded int[]
-     * @param isParallel                Whether the underlying stream is parallel, if so this method
-     *                                  executes a binary search for the proper insertion index. The {@link List}
-     *                                  handed in should thus be a {@link LinkedList} for faster insertion.
+     *
+     * @param arr                The string array of field values
+     * @param fieldNames         The field names
+     * @param fieldTypes         The field types
+     * @param outputStreamSource A list object to hold the encoded int[]
+     * @param isParallel         Whether the underlying stream is parallel, if so this method
+     *                           executes a binary search for the proper insertion index. The {@link List}
+     *                           handed in should thus be a {@link LinkedList} for faster insertion.
      */
     private int[] input(String[] arr, String[] fieldNames, FieldMetaType[] fieldTypes, List<int[]> outputStreamSource, boolean isParallel) {
         processHeader(arr);
-        
+
         int[] encoding = encoder.encode(inputMap);
-        
-        if(isParallel) {
+
+        if (isParallel) {
             outputStreamSource.set(padTo(Integer.parseInt(arr[0]), outputStreamSource), encoding);
         }
-        
+
         return encoding;
     }
-    
+
     /**
      * Return the input mapping of field names to the last input
-     * value for that field name. 
-     * 
-     * This method is typically used by client code which needs the 
+     * value for that field name.
+     * <p>
+     * This method is typically used by client code which needs the
      * input value for use with the {@link CLAClassifier}.
+     *
      * @return
      */
     public Map<String, Object> getInputMap() {
         return inputMap;
     }
-    
+
     /**
      * Avoids the {@link IndexOutOfBoundsException} that can happen if inserting
      * into indexes which have gaps between insertion points.
-     * 
-     * @param i     the index whose lesser values are to have null inserted
-     * @param l     the list to operate on.
-     * @return      the index passed in (for fluent convenience at call site).
+     *
+     * @param i the index whose lesser values are to have null inserted
+     * @param l the list to operate on.
+     * @return the index passed in (for fluent convenience at call site).
      */
     static int padTo(int i, List<?> l) {
-        for(int x = l.size();x < i + 1;x++) {
+        for (int x = l.size(); x < i + 1; x++) {
             l.add(null);
         }
         return i;
     }
-    
+
     /**
-     * Searches through the specified {@link MultiEncoder}'s previously configured 
+     * Searches through the specified {@link MultiEncoder}'s previously configured
      * encoders to find and return one that is of type {@link CoordinateEncoder} or
      * {@link GeospatialCoordinateEncoder}
-     * 
-     * @param enc   the containing {@code MultiEncoder}
+     *
+     * @param enc the containing {@code MultiEncoder}
      * @return
      */
     private Optional<Encoder<?>> getCoordinateEncoder(MultiEncoder enc) {
-        for(EncoderTuple t : enc.getEncoders(enc)) {
-            if((t.getEncoder() instanceof CoordinateEncoder) ||
-                (t.getEncoder() instanceof GeospatialCoordinateEncoder)) {
+        for (EncoderTuple t : enc.getEncoders(enc)) {
+            if ((t.getEncoder() instanceof CoordinateEncoder) ||
+                    (t.getEncoder() instanceof GeospatialCoordinateEncoder)) {
                 return Optional.of(t.getEncoder());
             }
         }
-        
+
         return Optional.empty();
     }
-    
+
     /**
-     * Searches through the specified {@link MultiEncoder}'s previously configured 
+     * Searches through the specified {@link MultiEncoder}'s previously configured
      * encoders to find and return one that is of type {@link CategoryEncoder} or
      * {@link SDRCategoryEncoder}
-     * 
-     * @param enc   the containing {@code MultiEncoder}
+     *
+     * @param enc the containing {@code MultiEncoder}
      * @return
      */
     private Optional<Encoder<?>> getCategoryEncoder(MultiEncoder enc) {
-        for(EncoderTuple t : enc.getEncoders(enc)) {
-            if((t.getEncoder() instanceof CategoryEncoder) ||
-                (t.getEncoder() instanceof SDRCategoryEncoder)) {
+        for (EncoderTuple t : enc.getEncoders(enc)) {
+            if ((t.getEncoder() instanceof CategoryEncoder) ||
+                    (t.getEncoder() instanceof SDRCategoryEncoder)) {
                 return Optional.of(t.getEncoder());
             }
         }
-        
+
         return Optional.empty();
     }
-    
+
     /**
-     * Searches through the specified {@link MultiEncoder}'s previously configured 
+     * Searches through the specified {@link MultiEncoder}'s previously configured
      * encoders to find and return one that is of type {@link DateEncoder}
-     * 
-     * @param enc   the containing {@code MultiEncoder}
+     *
+     * @param enc the containing {@code MultiEncoder}
      * @return
      */
     private Optional<DateEncoder> getDateEncoder(MultiEncoder enc) {
-       for(EncoderTuple t : enc.getEncoders(enc)) {
-           if(t.getEncoder() instanceof DateEncoder) {
-               return Optional.of((DateEncoder)t.getEncoder());
-           }
-       }
-       
-       return Optional.empty();
+        for (EncoderTuple t : enc.getEncoders(enc)) {
+            if (t.getEncoder() instanceof DateEncoder) {
+                return Optional.of((DateEncoder) t.getEncoder());
+            }
+        }
+
+        return Optional.empty();
     }
-    
+
     /**
-     * Searches through the specified {@link MultiEncoder}'s previously configured 
+     * Searches through the specified {@link MultiEncoder}'s previously configured
      * encoders to find and return one that is of type {@link DateEncoder}
-     * 
-     * @param enc   the containing {@code MultiEncoder}
+     *
+     * @param enc the containing {@code MultiEncoder}
      * @return
      */
     private Optional<SDRPassThroughEncoder> getSDRPassThroughEncoder(MultiEncoder enc) {
-       for(EncoderTuple t : enc.getEncoders(enc)) {
-           if(t.getEncoder() instanceof SDRPassThroughEncoder) {
-               return Optional.of((SDRPassThroughEncoder)t.getEncoder());
-           }
-       }
-       
-       return Optional.empty();
+        for (EncoderTuple t : enc.getEncoders(enc)) {
+            if (t.getEncoder() instanceof SDRPassThroughEncoder) {
+                return Optional.of((SDRPassThroughEncoder) t.getEncoder());
+            }
+        }
+
+        return Optional.empty();
     }
-    
+
     /**
-     * Searches through the specified {@link MultiEncoder}'s previously configured 
+     * Searches through the specified {@link MultiEncoder}'s previously configured
      * encoders to find and return one that is of type {@link ScalarEncoder},
      * {@link RandomDistributedScalarEncoder}, {@link AdaptiveScalarEncoder},
      * {@link LogEncoder} or {@link DeltaEncoder}.
-     * 
-     * @param enc   the containing {@code MultiEncoder}
+     *
+     * @param enc the containing {@code MultiEncoder}
      * @return
      */
     private Optional<Encoder<?>> getNumberEncoder(MultiEncoder enc) {
-        for(EncoderTuple t : enc.getEncoders(enc)) {
-            if((t.getEncoder() instanceof RandomDistributedScalarEncoder) ||
-                (t.getEncoder() instanceof ScalarEncoder) ||
-                (t.getEncoder() instanceof AdaptiveScalarEncoder) ||
-                (t.getEncoder() instanceof LogEncoder) ||
-                (t.getEncoder() instanceof DeltaEncoder)) {
-                
+        for (EncoderTuple t : enc.getEncoders(enc)) {
+            if ((t.getEncoder() instanceof RandomDistributedScalarEncoder) ||
+                    (t.getEncoder() instanceof ScalarEncoder) ||
+                    (t.getEncoder() instanceof AdaptiveScalarEncoder) ||
+                    (t.getEncoder() instanceof LogEncoder) ||
+                    (t.getEncoder() instanceof DeltaEncoder)) {
+
                 return Optional.of(t.getEncoder());
             }
         }
-        
+
         return Optional.empty();
-     }
-    
+    }
+
     /**
      * <p>
      * Returns a flag indicating whether the underlying stream has had
@@ -567,17 +650,18 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
      * The "terminal" flag if true does not indicate that the stream has reached
      * the end of its data, it just means that a terminating operation has been
      * invoked and that it can no longer support intermediate operation creation.
-     * 
-     * @return  true if terminal, false if not.
+     *
+     * @return true if terminal, false if not.
      */
     public boolean isTerminal() {
         return delegate.getInputStream().isTerminal();
     }
-    
+
     /**
      * Returns the {@link Header} container for Sensor meta
      * information associated with the input characteristics and configured
      * behavior.
+     *
      * @return
      */
     @Override
@@ -586,72 +670,74 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
     }
 
     /**
-     * Initializes this {@code HTMSensor}'s internal encoders if and 
+     * Initializes this {@code HTMSensor}'s internal encoders if and
      * only if the encoders have not been previously initialized.
      */
     @SuppressWarnings("unchecked")
     public void initEncoder(Parameters p) {
         this.localParameters = p;
-        
+
         Map<String, Map<String, Object>> encoderSettings;
-        if((encoderSettings = (Map<String, Map<String, Object>>)p.get(KEY.FIELD_ENCODING_MAP)) != null &&
-            !encodersInitted) {
-            
+        if ((encoderSettings = (Map<String, Map<String, Object>>) p.get(KEY.FIELD_ENCODING_MAP)) != null &&
+                !encodersInitted) {
+
             initEncoders(encoderSettings);
             makeIndexEncoderMap();
-            
+
             encodersInitted = true;
         }
     }
-    
+
     /**
      * Returns a flag indicating whether the internal encoders of this
-     * sensor have been initialized. 
-     * 
-     * @return  true if so, false if not.
+     * sensor have been initialized.
+     *
+     * @return true if so, false if not.
      */
     public boolean encodersInitted() {
         return encodersInitted;
     }
-    
+
     /**
      * Returns the global Parameters object
      */
     public Parameters getLocalParameters() {
         return localParameters;
     }
-    
+
     /**
      * For each entry, the header runs its processing to calculate
      * meta state of the current input (i.e. is learning, should reset etc.)
-     * 
-     * @param entry     an array containing the current input entry.
+     *
+     * @param entry an array containing the current input entry.
      */
     private void processHeader(String[] entry) {
         header.process(entry);
     }
-    
+
     /**
      * Called internally to initialize this sensor's encoders
+     *
      * @param encoderSettings
      */
     private void initEncoders(Map<String, Map<String, Object>> encoderSettings) {
-        if(encoder instanceof MultiEncoder) {
-            if(encoderSettings == null || encoderSettings.isEmpty()) {
+        if (encoder instanceof MultiEncoder) {
+            if (encoderSettings == null || encoderSettings.isEmpty()) {
                 throw new IllegalArgumentException(
-                    "Cannot initialize this Sensor's MultiEncoder with a null settings");
+                        "Cannot initialize this Sensor's MultiEncoder with a null settings");
             }
         }
-        
+
         MultiEncoderAssembler.assemble(encoder, encoderSettings);
     }
-      
+
     /**
      * Returns this {@code HTMSensor}'s {@link MultiEncoder}
+     *
      * @return
      */
     public <K> MultiEncoder getEncoder() {
-        return (MultiEncoder)encoder;
+        return (MultiEncoder) encoder;
     }
 
     /* (non-Javadoc)
@@ -671,22 +757,22 @@ public class HTMSensor<T> implements Sensor<T>, Serializable {
      */
     @Override
     public boolean equals(Object obj) {
-        if(this == obj)
+        if (this == obj)
             return true;
-        if(obj == null)
+        if (obj == null)
             return false;
-        if(getClass() != obj.getClass())
+        if (getClass() != obj.getClass())
             return false;
-        HTMSensor<?> other = (HTMSensor<?>)obj;
-        if(indexFieldMap == null) {
-            if(other.indexFieldMap != null)
+        HTMSensor<?> other = (HTMSensor<?>) obj;
+        if (indexFieldMap == null) {
+            if (other.indexFieldMap != null)
                 return false;
-        } else if(!indexFieldMap.equals(other.indexFieldMap))
+        } else if (!indexFieldMap.equals(other.indexFieldMap))
             return false;
-        if(sensorParams == null) {
-            if(other.sensorParams != null)
+        if (sensorParams == null) {
+            if (other.sensorParams != null)
                 return false;
-        } else if(!Arrays.equals(sensorParams.keys(), other.sensorParams.keys()))
+        } else if (!Arrays.equals(sensorParams.keys(), other.sensorParams.keys()))
             return false;
         return true;
     }
