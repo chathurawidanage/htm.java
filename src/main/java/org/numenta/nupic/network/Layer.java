@@ -2023,17 +2023,17 @@ public class Layer<T> implements Persistable {
             Layer.this.compute((T) intArray);
 
             // Notify all downstream observers that the stream is closed
-            if (!sensor.hasNext()) {
-                notifyComplete();
-            }
+//            if (!sensor.hasNext()) {
+//                notifyComplete();
+//            }
         });
 
         //start a new thread for every 3 networks
-        if (layersCount.incrementAndGet() % 3 != 0) {
+        if (layersCount.incrementAndGet() % 3 != 0 || threadCount.get() >= Runtime.getRuntime().availableProcessors()) {
             return;
         }
 
-        LAYER_THREAD = new Thread("Unified IndyCar Layer Thread - " + threadCount.incrementAndGet()) {
+        final Thread newThread = new Thread("Unified IndyCar Layer Thread - " + threadCount.incrementAndGet()) {
 
             @SuppressWarnings("unchecked")
             public void run() {
@@ -2042,8 +2042,11 @@ public class Layer<T> implements Persistable {
                 while (true) {
                     Runnable poll = outStreams.poll();
                     if (poll != null) {
-                        poll.run();
-                        outStreams.add(poll);
+                        try {
+                            poll.run();
+                        } finally {
+                            outStreams.add(poll);
+                        }
                     }
                 }
 
@@ -2076,14 +2079,11 @@ public class Layer<T> implements Persistable {
             }
         };
 
-        LAYER_THREAD.setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+        newThread.setUncaughtExceptionHandler(
+                (t, e) -> notifyError(new RuntimeException("Unhandled Exception in " + newThread.getName(), e)));
+        newThread.start();
 
-            @Override
-            public void uncaughtException(Thread t, Throwable e) {
-                notifyError(new RuntimeException("Unhandled Exception in " + LAYER_THREAD.getName(), e));
-            }
-        });
-        LAYER_THREAD.start();
+        LAYER_THREAD = newThread;
     }
 
     /**

@@ -22,8 +22,10 @@
 package org.numenta.nupic.network.sensor;
 
 import java.util.Iterator;
+import java.util.Queue;
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Supplier;
 import java.util.stream.StreamSupport;
 
@@ -79,12 +81,18 @@ public class ObservableSensor<T> implements Sensor<Observable<T>> {
             obs = (Observable<String>)publisher; 
         }
         
-        Iterator<String> observerator = obs.toBlocking().getIterator();
+        //Iterator<String> observerator = obs.toBlocking().getIterator();
+
+        Queue<String> data = new ConcurrentLinkedQueue<>();
+
+        obs.subscribe((s)->{
+            data.add(s);
+        });
         
         Iterator<String> iterator = new Iterator<String>() {
-            @Override public boolean hasNext() { return observerator.hasNext(); }
+            @Override public boolean hasNext() { return !data.isEmpty(); }
             @Override public String next() {
-                return observerator.next();
+                return data.poll();
             }
         };
                 
